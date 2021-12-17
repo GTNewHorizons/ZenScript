@@ -1,35 +1,32 @@
-buildscript {
-    repositories {
-        mavenCentral()
+plugins {
+    id 'java'
+    id 'idea'
+    id("com.palantir.git-version") version("0.12.3")
+    id("maven-publish")
+}
+
+def projectJavaVersion = JavaLanguageVersion.of(8)
+
+java {
+    toolchain {
+        languageVersion.set(projectJavaVersion)
     }
 }
 
-
-
-apply plugin: 'java'
-apply plugin: 'maven-publish'
-
-version = "1.0.0"
-
-if(project.hasProperty("craftTweakerVersion")){
-version = ext.craftTweakerVersion
-}
-
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
-
-
-//Shuts up javadoc failures
-if (JavaVersion.current().isJava8Compatible()) {
-
-    allprojects {
-
-        tasks.withType(Javadoc) {
-
-            options.addStringOption('Xdoclint:none', '-quiet')
-        }
+idea {
+    module {
+        inheritOutputDirs = true
+        downloadJavadoc = true
+        downloadSources = true
     }
 }
+
+// Fix Jenkins' Git: chmod a file should not be detected as a change and append a '.dirty' to the version
+'git config core.fileMode false'.execute()
+
+group = projectGroup
+archivesBaseName = projectId
+
 repositories {
     mavenCentral()
     maven {
@@ -59,72 +56,51 @@ dependencies {
     //compile files("libs/tools.jar")
 }
 
-task sourcesJar(type: Jar, dependsOn: classes) {
+jar {
+    // Pulls version from git tag
+    getArchiveVersion().set(gitVersion())
 
-    description = 'Creates a JAR containing the source code.'
-    from sourceSets.main.allSource
-    classifier = 'sources'
-}
-task javadocJar(type: Jar, dependsOn: javadoc) {
-
-    description = 'Creates a JAR containing the JavaDocs.'
-    from javadoc.destinationDir
-    classifier = 'javadoc'
-}
-task deobfJar(type: Jar) {
-
-    description = 'Creates a JAR containing the non-obfuscated compiled code.'
     from sourceSets.main.output
-    classifier = "deobf"
+    from (file("$projectDir/LICENSE"))
 }
 
-//Adds the artifact types added by this script to the actual artifacts list.
+task sourcesJar(type: Jar) {
+    // Pulls version from git tag
+    getArchiveVersion().set(gitVersion())
+
+    from sourceSets.main.output
+    from sourceSets.main.allJava
+    getArchiveClassifier().set('sources')
+}
+
 artifacts {
-
     archives sourcesJar
-    archives javadocJar
-    archives deobfJar
 }
 
-test {
-    //useJUnitPlatform()
-    testLogging{
-        events "PASSED", "FAILED", "SKIPPED"
-    }
-}
-
+// publishing
 publishing {
-
     publications {
+        maven(MavenPublication) {
+            artifact source: jar
+            artifact source: sourcesJar, classifier: "src"
 
-        mavenJava(MavenPublication) {
-
-            groupId project.group
-            artifactId project.archivesBaseName
-            version project.version
-            from components.java
-
-            // Adds the various artifacts
-            artifact sourcesJar {
-
-                classifier 'sources'
-            }
-            artifact javadocJar {
-
-                classifier 'javadoc'
-            }
-            artifact deobfJar {
-
-                classifier 'deobf'
-            }
+            groupId = System.getenv("ARTIFACT_GROUP_ID") ?: group
+            artifactId = System.getenv("ARTIFACT_ID") ?: project.name
+            version = System.getenv("ARTIFACT_VERSION") ?: project.version
         }
     }
 
     repositories {
-
         maven {
-
-            url "file://" + System.getenv("local_maven")
+            String owner = System.getenv("REPOSITORY_OWNER") ?: "Unknown"
+            String repositoryName = System.getenv("REPOSITORY_NAME") ?: "Unknown"
+            String githubRepositoryUrl = "https://maven.pkg.github.com/$owner/$repositoryName"
+            name = "GitHubPackages"
+            url = githubRepositoryUrl
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: "NONE"
+                password = System.getenv("GITHUB_TOKEN") ?: "NONE"
+            }
         }
     }
 }
