@@ -29,9 +29,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Setup the workspace
-        run: ./gradlew setupCIWorkspace
-
       - name: Build the mod
         run: ./gradlew build
 
